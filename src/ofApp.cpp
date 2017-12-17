@@ -1,6 +1,8 @@
 #include "ofApp.h"
 
 #include <functional>
+#include <random>
+
 
 double I(double a, double b, std::function<double(double)> y, std::function<double(double)> dydx) {
 	int N = 100;
@@ -30,29 +32,22 @@ double function_delta_dydx(double x) {
 	return 0;
 }
 
-//--------------------------------------------------------------
-void ofApp::setup() {
 
-	double E = I(0, 10, function_y, function_dydx);
-
-	double E_plus_deltaE = I(0, 10, [](double x) {
-		return function_y(x) + function_delta_y(x);
-	}, [](double x) {
-		return function_dydx(x) + function_delta_dydx(x);
-	});
-
-	_camera.setNearClip(0.1f);
-	_camera.setFarClip(100.0f);
-	_camera.setDistance(5.0f);
-
-	ofSetFrameRate(60);
-	ofSetVerticalSync(false);
-
-	_imgui.setup();
-}
-//--------------------------------------------------------------
-void ofApp::update() {
-
+/*
+omposite Simpson's rule
+n is even
+*/
+inline double integrate_composite_simpson(std::function<double(double)> f, double a, double b, int n) {
+	assert((n & 0x1) == 0);
+	double sum = 0;
+	double h = (b - a) / n;
+	for (int i = 1; i < n; ++i) {
+		double c = (i & 0x1) ? 4.0 : 2.0;
+		double x_i = a + h * i;
+		sum += c * f(x_i);
+	}
+	sum += f(a) + f(b);
+	return sum * h / 3.0;
 }
 
 namespace catenary {
@@ -94,7 +89,7 @@ namespace catenary {
 		double h2 = h * h;
 		double h2_over_a2 = h2 / a2;
 		return std::fma(
-			h, 
+			h,
 			std::fma(
 				h2_over_a2,
 				std::fma(h2_over_a2, 1.0 / 1920.0, 1.0 / 24.0),
@@ -156,6 +151,9 @@ namespace catenary {
 		double evaluate(double x) const {
 			return a * std::cosh((x + S) / a) + T;
 		}
+		double evaluate_dfdx(double x) const {
+			return std::sinh((x + S) / a);
+		}
 	};
 
 	/*
@@ -173,8 +171,65 @@ namespace catenary {
 
 	// double L_actual = c.a * std::sinh((X + c.S) / c.a) - c.a * std::sinh(c.S / c.a);
 	// printf("%.3f\n", L_actual);
+}
+
+void test() {
+	std::mt19937 engine;
+	std::uniform_real_distribution<> random_x(0.01, 1000.0);
+	std::uniform_real_distribution<> random_y(-1000.0, 1000.0);
+	double eps = 0.001;
+	for (int i = 0; i < 100000; ++i) {
+		double x = random_x(engine);
+		double y = random_y(engine);
+		double min_s = std::sqrt(x * x + y * y);
+		std::uniform_real_distribution<> random_s(min_s + eps, min_s + eps + 1000.0);
+		double s = random_s(engine);
+		catenary::Curve curve = catenary::curve(x, y, s);
+
+		double numeric_s = integrate_composite_simpson([curve](double x) {
+			double dfdx = curve.evaluate_dfdx(x);
+			return std::sqrt(1.0 + dfdx * dfdx);
+		}, 0, x, 1000);
+		
+		if (std::fabs(curve.evaluate(0)) > 0.000001) {
+			abort();
+		}
+		if (std::fabs(curve.evaluate(x) - y) > 0.000001) {
+			abort();
+		}
+		if (std::fabs(s - numeric_s) > eps) {
+			abort();
+		}
+	}
+}
+
+//--------------------------------------------------------------
+void ofApp::setup() {
+
+	double E = I(0, 10, function_y, function_dydx);
+
+	double E_plus_deltaE = I(0, 10, [](double x) {
+		return function_y(x) + function_delta_y(x);
+	}, [](double x) {
+		return function_dydx(x) + function_delta_dydx(x);
+	});
+
+	_camera.setNearClip(0.1f);
+	_camera.setFarClip(100.0f);
+	_camera.setDistance(5.0f);
+
+	ofSetFrameRate(60);
+	ofSetVerticalSync(false);
+
+	_imgui.setup();
+
+	// test();
+}
+//--------------------------------------------------------------
+void ofApp::update() {
 
 }
+
 
 //--------------------------------------------------------------
 void ofApp::draw() {
@@ -259,6 +314,7 @@ void ofApp::draw() {
 
 	{
 		catenary::Curve curve = catenary::curve(_toX, _toY, _s);
+
 
 		ofPolyline line;
 		int N = 1000;
