@@ -154,6 +154,9 @@ namespace catenary {
 		double evaluate_dfdx(double x) const {
 			return std::sinh((x + S) / a);
 		}
+		double x_for_s(double s) const {
+			return a * std::asinh(s / a + std::sinh(S / a)) - S;
+		}
 	};
 
 	/*
@@ -198,6 +201,19 @@ void test() {
 			abort();
 		}
 		if (std::fabs(s - numeric_s) > eps) {
+			abort();
+		}
+
+		std::uniform_real_distribution<> random_at_s(0.0, s);
+		double at_s = random_at_s(engine);
+		double at_x = curve.x_for_s(at_s);
+
+		double numeric_at_s = integrate_composite_simpson([curve](double x) {
+			double dfdx = curve.evaluate_dfdx(x);
+			return std::sqrt(1.0 + dfdx * dfdx);
+		}, 0, at_x, 1000);
+
+		if (std::fabs(at_s - numeric_at_s) > eps) {
 			abort();
 		}
 	}
@@ -312,19 +328,42 @@ void ofApp::draw() {
 	ofSetColor(128, 255, 128);
 	ofDrawSphere(_toX, _toY, 0.05f);
 
+	catenary::Curve curve = catenary::curve(_toX, _toY, _s);
 	{
-		catenary::Curve curve = catenary::curve(_toX, _toY, _s);
-
-
 		ofPolyline line;
 		int N = 1000;
 		for (int i = 0; i < N; ++i) {
-			float x = ofMap(i, 0, N - 1, 0, _toX);
-			float y = curve.evaluate(x);
+			double x = ofMap(i, 0, N - 1, 0, _toX);
+			double y = curve.evaluate(x);
 			line.addVertex(x, y);
 		}
 		ofSetColor(255, 255, 0);
 		line.draw();
+	}
+
+	{
+		ofVec3f colors[] = {
+			{ 80, 0, 255 },
+			{ 0, 204, 128 },
+			{ 0, 255, 0 },
+			{ 255, 72, 0 },
+			{ 224, 0, 0 },
+		};
+
+		int N = 10;
+		float step = _s / N;
+		for (int i = 1; i < N; ++i) {
+			auto color = colors[i % (sizeof(colors) / sizeof(colors[i]))];
+			ofSetColor(color.x, color.y, color.z);
+
+			double s = step * i;
+			double x = curve.x_for_s(s);
+			double y = curve.evaluate(x);
+
+			double ofs = 0.6;
+			ofLine(x, y, x, y - ofs);
+			ofDrawCircle(x, y - ofs, 0.2);
+		}
 	}
 
 	_camera.end();
