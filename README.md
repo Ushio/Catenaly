@@ -3,4 +3,4 @@
 ![render](xmas.gif)
 
 ## Qiita
-https://qiita.com/Ushio/private/3648bf64456fd7cea950
+https://qiita.com/Ushio/items/3648bf64456fd7cea950
